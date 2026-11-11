@@ -165,7 +165,10 @@ class Baozi : HttpSource() {
         return urls.mapIndexed { i, url -> Page(i, imageUrl = url) }
     }
 
-    private fun Response.doc(): Document = Jsoup.parse(body.string(), request.url.toString())
+    // 图片走 pageListParse 直接给绝对地址，这个用不到
+    override fun imageUrlParse(response: Response): String = ""
+
+    private fun Response.doc(): Document = Jsoup.parse(body!!.string(), request.url.toString())
 
     private fun Document.metaContent(key: String): String =
         selectFirst("meta[property=\"$key\"], meta[name=\"$key\"]")?.attr("content")?.trim().orEmpty()
