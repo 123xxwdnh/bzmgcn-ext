@@ -3,8 +3,29 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Komikku/Mihon 靠这个 feature 判断「这是扩展」，缺了就不显示 -->
+    <uses-feature
+        android:name="tachiyomi.extension"
+        android:required="false" />
+
     <application
         android:allowBackup="false"
-        android:label="包子漫画" />
+        android:label="包子漫画">
+
+        <!-- 入口类，开头带 . 会自动补包名 -->
+        <meta-data
+            android:name="tachiyomi.extension.class"
+            android:value=".Baozi" />
+
+        <!-- extensions-lib 版本，只支持 1.4 / 1.6 -->
+        <meta-data
+            android:name="tachiyomix.extensionLib"
+            android:value="1.4" />
+
+        <meta-data
+            android:name="tachiyomix.name"
+            android:value="包子漫画" />
+
+    </application>
 
 </manifest>
