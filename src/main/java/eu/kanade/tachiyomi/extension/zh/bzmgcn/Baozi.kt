@@ -36,11 +36,6 @@ class Baozi : HttpSource() {
     private val ua =
         "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36"
 
-    override val headers: Headers = Headers.Builder()
-        .add("User-Agent", ua)
-        .add("Accept-Language", "zh-CN,zh;q=0.9")
-        .build()
-
     private val cookies = SimpleCookieJar()
 
     override val client: OkHttpClient = OkHttpClient.Builder()
@@ -49,6 +44,11 @@ class Baozi : HttpSource() {
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
+
+    // headers 在 extensions-lib 里是 final，只能改 headersBuilder
+    override fun headersBuilder(): Headers.Builder = super.headersBuilder()
+        .set("User-Agent", ua)
+        .set("Accept-Language", "zh-CN,zh;q=0.9")
 
     // ---------------------------------------------------------------- 列表
 
@@ -86,9 +86,11 @@ class Baozi : HttpSource() {
             val link = card.selectFirst("a.comics-card__poster") ?: return@mapNotNull null
             val href = link.attr("href")
             if (!href.contains("/comic/")) return@mapNotNull null
+            val slug = href.substringAfter("/comic/").substringBefore("?").trimEnd('/')
+            if (slug.isEmpty() || slug == "sitemap") return@mapNotNull null
             SManga.create().apply {
-                url = href.substringAfter("/comic/").substringBefore("?").trimEnd('/')
-                name = link.attr("title").ifBlank {
+                url = slug
+                title = link.attr("title").ifBlank {
                     card.selectFirst("amp-img")?.attr("alt").orEmpty()
                 }
                 thumbnail_url = card.selectFirst("amp-img")?.attr("src")
@@ -132,7 +134,7 @@ class Baozi : HttpSource() {
         val slug = response.request.url.encodedPath.removePrefix("/comic/").trimEnd('/')
         val out = LinkedHashMap<String, SChapter>()
 
-        doc.select("a[href*=/user/page_direct]").forEach { a ->
+        doc.select("a[href*=page_direct]").forEach { a ->
             val href = a.attr("href")
             val section = Regex("""section_slot=(\d+)""").find(href)?.groupValues?.get(1) ?: return@forEach
             val slot = Regex("""chapter_slot=(\d+)""").find(href)?.groupValues?.get(1) ?: return@forEach
@@ -166,7 +168,7 @@ class Baozi : HttpSource() {
     private fun Response.doc(): Document = Jsoup.parse(body.string(), request.url.toString())
 
     private fun Document.metaContent(key: String): String =
-        selectFirst("meta[property=$key], meta[name=$key]")?.attr("content")?.trim().orEmpty()
+        selectFirst("meta[property=\"$key\"], meta[name=\"$key\"]")?.attr("content")?.trim().orEmpty()
 }
 
 // -------------------------------------------------------------------- 反爬
@@ -194,7 +196,7 @@ private class SimpleCookieJar : CookieJar {
  *   GET  -> 403 + 一段 JS，里面带 challengeId / ticket / difficultyBits
  *   算 SHA-256("gatekeeper-pow-v1:<id>:<nonce>") 前导零 >= difficultyBits
  *   POST /__gatekeeper_challenge/verify {challenge_id, ticket, nonce} -> 拿到 clearance cookie
- * 这里在拦截器里自动完成，然后重放原请求。
+ * 这里在拦截器里自动完成，然后用不带拦截器的 client 重放原请求。
  */
 private class Gatekeeper(private val jar: CookieJar, private val ua: String) : Interceptor {
 
@@ -204,8 +206,8 @@ private class Gatekeeper(private val jar: CookieJar, private val ua: String) : I
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    private val cfgRe = Regex("""(challengeId|ticket|verifyUrl)\s*:\s*"([^"]*)"""")
-    private val bitsRe = Regex("""difficultyBits\s*:\s*(\d+)""")
+    private val cfgRe = Regex("(challengeId|ticket|verifyUrl)\\s*:\\s*\"([^\"]*)\"")
+    private val bitsRe = Regex("difficultyBits\\s*:\\s*(\\d+)")
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -233,7 +235,7 @@ private class Gatekeeper(private val jar: CookieJar, private val ua: String) : I
         val nonce = findNonce(cid, bits)
 
         val target = url.newBuilder().encodedPath(verifyPath).query(null).build()
-        val payload = """{"challenge_id":"$cid","ticket":"$ticket","nonce":"$nonce"}"""
+        val payload = "{\"challenge_id\":\"$cid\",\"ticket\":\"$ticket\",\"nonce\":\"$nonce\"}"
         val req = Request.Builder()
             .url(target)
             .header("User-Agent", ua)

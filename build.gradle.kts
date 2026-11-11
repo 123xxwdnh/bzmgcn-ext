@@ -34,6 +34,10 @@ android {
 }
 
 dependencies {
+    // extensions-lib 的 POM 把 okhttp / rxjava 标成 runtime，Gradle 不会带进编译期，必须手动补
     compileOnly("com.github.keiyoushi:extensions-lib:1.4.2.1")
+    compileOnly("com.squareup.okhttp3:okhttp:4.12.0")
+    compileOnly("io.reactivex:rxjava:1.3.8")
+
     implementation("org.jsoup:jsoup:1.17.2")
 }
