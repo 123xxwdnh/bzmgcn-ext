@@ -40,9 +40,10 @@ class Baozi : HttpSource() {
 
     override val client: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(cookies)
+        .addInterceptor(ImageFallback())
         .addInterceptor(Gatekeeper(cookies, ua))
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
     // headers 在 extensions-lib 里是 final，只能改 headersBuilder
@@ -175,6 +176,37 @@ class Baozi : HttpSource() {
 }
 
 // -------------------------------------------------------------------- 反爬
+
+/**
+ * 图片 CDN（s1/s2.bzcdn.net）经常 302 到挂掉的边缘节点（如 s1-mha1-nlams.bzcdn.net）。
+ * 连不上时换备用静态域名重试，路径不变。
+ */
+private class ImageFallback : Interceptor {
+
+    private val altHosts = listOf("static-tw.baozimh.com", "static-tw.bzmgcn.com")
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        if (!request.url.host.endsWith("bzcdn.net")) return chain.proceed(request)
+
+        try {
+            return chain.proceed(request)
+        } catch (_: Exception) {
+            // 原 CDN 连不上，落到下面的备用域名
+        }
+
+        var last: Exception? = null
+        for (host in altHosts) {
+            try {
+                val alt = request.url.newBuilder().scheme("https").host(host).build()
+                return chain.proceed(request.newBuilder().url(alt).build())
+            } catch (e: Exception) {
+                last = e
+            }
+        }
+        throw last ?: java.io.IOException("image fallback failed")
+    }
+}
 
 private class SimpleCookieJar : CookieJar {
     private val store = HashMap<String, MutableList<Cookie>>()
