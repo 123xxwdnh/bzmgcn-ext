@@ -11,7 +11,7 @@ android {
         applicationId = "eu.kanade.tachiyomi.extension.zh.bzmgcn"
         minSdk = 21
         targetSdk = 34
-        versionCode = 2
+        versionCode = 3
         versionName = "1.4.0"
     }
 

@@ -211,6 +211,7 @@ private class Gatekeeper(private val jar: CookieJar, private val ua: String) : I
 
     private val cfgRe = Regex("(challengeId|ticket|verifyUrl)\\s*:\\s*\"([^\"]*)\"")
     private val bitsRe = Regex("difficultyBits\\s*:\\s*(\\d+)")
+    private val challengeUrlRe = Regex("\"challenge_url\"\\s*:\\s*\"([^\"]+)\"")
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -219,14 +220,32 @@ private class Gatekeeper(private val jar: CookieJar, private val ua: String) : I
 
         while (response.code == 403 && guard < 3) {
             val body = response.peekBody(2L * 1024 * 1024).string()
-            if (!body.contains("gatekeeperChallenge")) break
             val url = response.request.url
             response.close()
-            if (!solve(body, url)) break
+            val solved = when {
+                // 带浏览器风格的头（Sec-Fetch 等）时，站点直接吐 HTML 挑战页
+                body.contains("gatekeeperChallenge") -> solve(body, url)
+                // OkHttp 的默认头会触发 JSON 版：{"challenge_url": "...", "error": "challenge_required"}
+                body.trimStart().startsWith("{") -> solveJson(body, url)
+                else -> false
+            }
+            if (!solved) break
             response = bare.newCall(request).execute()
             guard++
         }
         return response
+    }
+
+    private fun solveJson(body: String, url: HttpUrl): Boolean {
+        val path = challengeUrlRe.find(body)?.groupValues?.get(1) ?: return false
+        val challengeUrl = url.resolve(path) ?: return false
+        val html = try {
+            val req = Request.Builder().url(challengeUrl).header("User-Agent", ua).build()
+            bare.newCall(req).execute().use { it.body?.string().orEmpty() }
+        } catch (_: Exception) {
+            return false
+        }
+        return solve(html, challengeUrl)
     }
 
     private fun solve(html: String, url: HttpUrl): Boolean {
