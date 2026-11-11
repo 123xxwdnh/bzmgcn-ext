@@ -146,11 +146,24 @@ class Baozi : HttpSource() {
             out[key] = SChapter.create().apply {
                 name = chapterName
                 url = "/comic/chapter/$slug/$key.html"
-                chapter_number = Regex("""第\s*([0-9]+(?:\.[0-9]+)?)\s*[话話]""")
-                    .find(chapterName)?.groupValues?.get(1)?.toFloatOrNull() ?: -1f
+                chapter_number = parseChapterNumber(chapterName)
             }
         }
         return out.values.toList()
+    }
+
+    /**
+     * 章节名有两种写法：「第536话 圣帝之力」和「783 新三贤」「1.姐姐1」。
+     * 站点不提供每话日期，排序全靠 chapter_number，解析不出来就排不了。
+     */
+    private fun parseChapterNumber(name: String): Float {
+        Regex("""第\s*(\d+(?:\.\d+)?)\s*[话話]""").find(name)?.let {
+            return it.groupValues[1].toFloatOrNull() ?: -1f
+        }
+        Regex("""^\s*(\d+(?:\.\d+)?)""").find(name)?.let {
+            return it.groupValues[1].toFloatOrNull() ?: -1f
+        }
+        return -1f
     }
 
     // ---------------------------------------------------------------- 图片
